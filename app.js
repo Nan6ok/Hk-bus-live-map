@@ -1,6 +1,6 @@
 // app.js - 第一階段：顯示香港地圖與模擬巴士
 // 你的 Mapbox 訪問令牌 (access token)
-mapboxgl.accessToken = 'pk.eyJ1IjoibmFuNmtvayIsImEiOiJjbTZ0aGExcGYwM2RiMmpwYzF6cWtyM3N6In0.-HQMtE4dC0qVyaPs0pP-7g'; // ！！！請務必替換成你自己的 Token ！！！
+mapboxgl.accessToken = 'pk.eyJ1IjoibmFuNm9rIiwiYSI6ImNtazB2bTYxMTdhNnkzZHB1cXN4bTRmb3UifQ.c6BNgPAE-3qtewe22CGvyQ'; // ！！！請務必替換成你自己的 Token ！！！
 
 // 地圖初始化
 const map = new mapboxgl.Map({
