@@ -1,0 +1,32 @@
+.legend {
+    margin-top: 10px;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+}
+.legend-color {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+.update-info {
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 10px;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+}
+.mapboxgl-popup-content {
+    border-radius: 8px;
+    padding: 15px;
+}
+.bus-popup h3 {
+    margin: 0 0 5px 0;
+    color: #333;
+}
+.bus-popup p {
+    margin: 3px 0;
+    font-size: 0.9em;
+    color: #666;
+}
