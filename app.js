@@ -3,7 +3,8 @@
 // 你的 Mapbox 訪問令牌 (Access Token)
 // !!! 重要：請務必替換成你自己的 Token !!!
 mapboxgl.accessToken = 'pk.eyJ1IjoibmFuNm9rIiwiYSI6ImNtazB2bTYxMTdhNnkzZHB1cXN4bTRmb3UifQ.c6BNgPAE-3qtewe22CGvyQ'; // ← 替換這裡
-
+// 导入KMB数据获取模块
+import { getKmbBusesOnRoute } from './kmbFetcher.js';
 // 地圖初始化
 const map = new mapboxgl.Map({
     container: 'map',
