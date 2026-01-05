@@ -52,7 +52,34 @@ const OPERATOR_COLORS = {
 
 // 儲存當前地圖上的巴士標記 (Marker)
 let busMarkers = {};
+// 儲存所有巴士的完整數據
+let allBuses = {
+    // 示例：初始化一輛巴士，現在它有兩個位置了
+    'KMB_101_001': {
+        id: 'KMB_101_001',
+        route: '101',
+        operator: 'KMB',
+        direction: '往觀塘',
+        // 核心：兩個位置
+        currentPosition: { lng: 114.165, lat: 22.332 }, // 地圖上實際顯示的位置
+        targetPosition: { lng: 114.165, lat: 22.332 },  // 它要平滑移動過去的目標，初始相同
+        // 用於控制動畫
+        speed: 0.00015 // 移動速度（經緯度/每次動畫幀），調整這個值可以變快變慢
+    },
+    'CTB_962_001': {
+        id: 'CTB_962_001',
+        route: '962',
+        operator: 'CTB',
+        direction: '往銅鑼灣',
+        currentPosition: { lng: 114.158, lat: 22.321 },
+        targetPosition: { lng: 114.158, lat: 22.321 },
+        speed: 0.00015
+    }
+    // ... 可以繼續添加其他初始巴士
+};
 
+// 儲存地圖上的標記物件（保持不變）
+let busMarkers = {};
 // 函式：載入初始模擬巴士 (第二階段會替換為真實API)
 function loadInitialBuses() {
     console.log('載入模擬巴士資料...');
