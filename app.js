@@ -1,68 +1,68 @@
-// app.js - 香港巴士实时地图 (为 iPad 优化，完整版)
-// ==============================================
-// 【！必填！】你的 Mapbox 令牌 (从 mapbox.com 获取)
-mapboxgl.accessToken = 'pk.eyJ1IjoibmFuNm9rIiwiYSI6ImNtazB2bTYxMTdhNnkzZHB1cXN4bTRmb3UifQ.c6BNgPAE-3qtewe22CGvyQ'; // ← 替换这里！
+// app.js - 香港巴士實時地圖主程序 (安全、完整版)
 
-// ==============================================
-// 1. 导入模块 (确保有 kmbFetcher.js 文件)
-// ==============================================
+// ==================== 【必須修改】 ====================
+// 請將下面的 Token 替換成你自己的 Mapbox 公開令牌 (Public Token)
+// 獲取地址：https://account.mapbox.com/access-tokens/
+mapboxgl.accessToken = 'pk.eyJ1IjoibmFuNm9rIiwiYSI6ImNtazB2bTYxMTdhNnkzZHB1cXN4bTRmb3UifQ.c6BNgPAE-3qtewe22CGvyQ';
+// =====================================================
+
+// 1. 導入模塊
 import { getKmbBusesOnRoute } from './kmbFetcher.js';
 
-// ==============================================
-// 2. 地图初始化
-// ==============================================
+// 2. 地圖初始化
 const map = new mapboxgl.Map({
     container: 'map',
     style: 'mapbox://styles/mapbox/streets-v12',
-    center: [114.1694, 22.3193],
+    center: [114.1694, 22.3193], // 香港中心
     zoom: 11,
-    pitch: 45
+    pitch: 45, // 3D傾斜
+    bearing: 0
 });
 
-// 公司颜色
-const OPERATOR_COLORS = { 'KMB': '#E2231A', 'CTB': '#FFD100', 'NLB': '#6DCFF6' };
+// 3. 巴士顏色定義
+const OPERATOR_COLORS = {
+    'KMB': '#E2231A', // 九巴紅
+    'CTB': '#FFD100', // 城巴黃
+    'NLB': '#6DCFF6'  // 新大嶼山藍
+};
 
-// ==============================================
-// 3. 核心数据
-// ==============================================
-let allBuses = {};
-let busMarkers = {};
-let isUpdating = false;
+// 4. 全局變量
+let allBuses = {};     // 儲存所有巴士數據
+let busMarkers = {};   // 儲存地圖標記
+let isUpdating = false; // 防止重複更新
 
-// ==============================================
-// 4. 核心函数定义
-// ==============================================
-
-// 4.1 添加巴士标记
+// 5. 函數：添加巴士到地圖
 function addBusToMap(busId) {
     const bus = allBuses[busId];
     if (!bus) return;
 
     const el = document.createElement('div');
     el.className = 'bus-marker';
-    Object.assign(el.style, {
-        width: '20px', height: '20px', borderRadius: '50%',
-        backgroundColor: OPERATOR_COLORS[bus.operator] || '#888',
-        border: '3px solid white', boxShadow: '0 0 5px rgba(0,0,0,0.5)',
-        cursor: 'pointer'
-    });
-    el.title = `${bus.operator} ${bus.route}`;
+    el.style.cssText = `
+        width: 20px; height: 20px; border-radius: 50%;
+        background-color: ${OPERATOR_COLORS[bus.operator] || '#888'};
+        border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        cursor: pointer;
+    `;
+    el.title = `${bus.operator} ${bus.route} | ${bus.direction}`;
 
     const marker = new mapboxgl.Marker(el)
         .setLngLat([bus.currentPosition.lng, bus.currentPosition.lat])
-        .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`
-            <div class="bus-popup">
-                <h3>${bus.operator} ${bus.route}</h3>
-                <p><strong>方向:</strong> ${bus.direction || 'N/A'}</p>
-                <p><small>ID: ${busId}</small></p>
-            </div>
-        `))
+        .setPopup(new mapboxgl.Popup({ offset: 25 })
+            .setHTML(`
+                <div class="bus-popup">
+                    <h3>${bus.operator} ${bus.route} 路線</h3>
+                    <p><strong>方向:</strong> ${bus.direction}</p>
+                    <p><strong>狀態:</strong> 行駛中</p>
+                    <p><small>車輛 ID: ${busId}</small></p>
+                </div>
+            `))
         .addTo(map);
     
     busMarkers[busId] = marker;
 }
 
-// 4.2 平滑动画引擎
+// 6. 函數：平滑動畫引擎 (核心)
 function animateBuses() {
     Object.keys(allBuses).forEach(busId => {
         const bus = allBuses[busId];
@@ -74,9 +74,12 @@ function animateBuses() {
         const distance = Math.sqrt(dlng * dlng + dlat * dlat);
 
         if (distance < 0.00001) {
-            bus.currentPosition = { ...bus.targetPosition };
+            // 到達目標
+            bus.currentPosition.lng = bus.targetPosition.lng;
+            bus.currentPosition.lat = bus.targetPosition.lat;
         } else {
-            const moveStep = 0.00015 * Math.min(distance, 1);
+            // 平滑移動
+            const moveStep = bus.speed * Math.min(distance, 1);
             bus.currentPosition.lng += (dlng / distance) * moveStep;
             bus.currentPosition.lat += (dlat / distance) * moveStep;
         }
@@ -85,99 +88,97 @@ function animateBuses() {
     requestAnimationFrame(animateBuses);
 }
 
-// 4.3 更新信息面板
+// 7. 函數：更新信息面板
 function updateInfoPanel(count) {
     const countEl = document.getElementById('bus-count');
     const timeEl = document.getElementById('update-time');
     if (countEl) countEl.textContent = count;
     if (timeEl) {
         const now = new Date();
-        timeEl.textContent = now.toTimeString().slice(0, 8);
+        timeEl.textContent = 
+            `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
     }
 }
 
-// 4.4 从API获取数据 (核心)
-async function updateBusesFromRealAPI() {
+// 8. 函數：從數據源獲取並更新巴士 (核心)
+async function updateBusesFromAPI() {
     if (isUpdating) return;
     isUpdating = true;
-    console.log('[步骤] 开始获取KMB实时数据...');
 
     try {
-        const realBuses = await getKmbBusesOnRoute('101'); // 获取101路线数据
-        console.log(`[成功] 获取到 ${realBuses.length} 辆巴士`);
-
+        console.log('[系統] 正在更新巴士數據...');
+        // 調用 kmbFetcher.js 中的函數獲取數據
+        const realBuses = await getKmbBusesOnRoute('101'); // 固定獲取101路線
+        
         realBuses.forEach(realBus => {
-            if (!allBuses[realBus.id]) {
-                // 新增巴士
+            if (allBuses[realBus.id]) {
+                // 更新已有巴士的目標位置
+                allBuses[realBus.id].targetPosition = { 
+                    lng: realBus.lng, 
+                    lat: realBus.lat 
+                };
+            } else {
+                // 添加新巴士
                 allBuses[realBus.id] = {
-                    ...realBus,
+                    id: realBus.id,
+                    route: realBus.route,
+                    operator: realBus.operator,
+                    direction: realBus.direction,
                     currentPosition: { lng: realBus.lng, lat: realBus.lat },
                     targetPosition: { lng: realBus.lng, lat: realBus.lat },
-                    speed: 0.00015
+                    speed: 0.0001 // 移動速度
                 };
                 addBusToMap(realBus.id);
-            } else {
-                // 更新已有巴士的目标位置
-                allBuses[realBus.id].targetPosition = { lng: realBus.lng, lat: realBus.lat };
             }
         });
+        
         updateInfoPanel(Object.keys(allBuses).length);
+        console.log(`[系統] 更新完成，共管理 ${Object.keys(allBuses).length} 輛巴士`);
+        
     } catch (error) {
-        console.error('[错误] 获取数据失败:', error);
-        // 友好提示：在信息面板显示错误
-        const panel = document.getElementById('info-panel');
-        if (panel && !document.getElementById('error-msg')) {
-            const msg = document.createElement('p');
-            msg.id = 'error-msg';
-            msg.style.color = 'red';
-            msg.textContent = '数据获取失败，请检查控制台。';
-            panel.appendChild(msg);
-        }
+        console.error('[系統] 更新數據時出錯:', error);
     } finally {
         isUpdating = false;
     }
 }
 
-// ==============================================
-// 5. 地图加载完成后执行
-// ==============================================
+// 9. 地圖加載完成後的主程序
 map.on('load', () => {
-    console.log('[步骤] 地图加载完成，启动应用...');
+    console.log('[系統] 地圖加載完成！');
     
-    // 添加3D建筑
-    if (map.getSource('composite')) {
-        map.addLayer({
-            'id': '3d-buildings',
-            'source': 'composite',
-            'source-layer': 'building',
-            'filter': ['==', 'extrude', 'true'],
-            'type': 'fill-extrusion',
-            'minzoom': 12,
-            'paint': {
-                'fill-extrusion-color': '#ddd',
-                'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 12, 0, 15, ['get', 'height']],
-                'fill-extrusion-opacity': 0.6
-            }
-        }, 'road-label');
-    }
-
-    // 启动动画
+    // 添加3D建築層 (可選)
+    map.addLayer({
+        'id': '3d-buildings',
+        'source': 'composite',
+        'source-layer': 'building',
+        'filter': ['==', 'extrude', 'true'],
+        'type': 'fill-extrusion',
+        'minzoom': 12,
+        'paint': {
+            'fill-extrusion-color': '#ddd',
+            'fill-extrusion-height': [
+                'interpolate', ['linear'], ['zoom'],
+                12, 0, 15, ['get', 'height']
+            ],
+            'fill-extrusion-base': ['get', 'min_height'],
+            'fill-extrusion-opacity': 0.6
+        }
+    }, 'road-label');
+    
+    // 啟動平滑動畫引擎
     animateBuses();
-    console.log('[成功] 动画引擎启动');
+    console.log('[系統] 平滑動畫引擎已啟動');
     
-    // 立即并每隔30秒获取数据
-    updateBusesFromRealAPI();
-    setInterval(updateBusesFromRealAPI, 30000);
+    // 立即獲取一次數據，然後每20秒更新一次
+    updateBusesFromAPI();
+    const updateInterval = setInterval(updateBusesFromAPI, 20000);
     
-    // 添加手动刷新按钮（方便测试）
-    const panel = document.getElementById('info-panel');
-    if (panel) {
-        const btn = document.createElement('button');
-        btn.textContent = '手动刷新数据';
-        btn.style.cssText = 'margin-top:10px; padding:5px; background:#007cba; color:white; border:none; border-radius:3px;';
-        btn.onclick = updateBusesFromRealAPI;
-        panel.appendChild(btn);
+    // 綁定手動刷新按鈕
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.onclick = updateBusesFromAPI;
     }
 });
 
-console.log('✅ 香港巴士地图应用初始化完毕。');
+// 10. 初始日誌
+console.log('[系統] 香港巴士實時地圖已初始化。');
