@@ -7,12 +7,12 @@ const MAPBOX_TOKEN = 'pk.eyJ1IjoibmFuNm9rIiwiYSI6ImNtazB2bTYxMTdhNnkzZHB1cXN4bTR
 
 // 1. 设置Token并导入模块
 mapboxgl.accessToken = MAPBOX_TOKEN;
-import { getAllSimulatedBuses, fetchETAForRoute } from './kmbFetcher.js';
+import { getAllSimulatedBuses, fetchETAForRoute, getRouteData, fetchStop } from './kmbFetcher.js';
 
 // 2. 全局状态
 let map = null;
 let allBuses = {};      // 主车辆库: { 车辆ID: 车辆数据 }
-let busSource = null;   // GeoJSON source for buses
+let busMarkers = {};    // 地图标记: { 车辆ID: marker对象 }
 let isUpdating = false;
 let updateInterval = null;
 let animationId = null;  // For animation
@@ -65,6 +65,82 @@ function updateBusSource() {
     }
 }
 
+// Display route on map
+async function displayRoute(routeData) {
+    // Create route lines
+    const routeFeatures = [];
+    if (routeData.pathO && routeData.pathO.length > 0) {
+        routeFeatures.push({
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: routeData.pathO
+            },
+            properties: { direction: 'O' }
+        });
+    }
+    if (routeData.pathI && routeData.pathI.length > 0) {
+        routeFeatures.push({
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: routeData.pathI
+            },
+            properties: { direction: 'I' }
+        });
+    }
+
+    map.getSource('routes').setData({
+        type: 'FeatureCollection',
+        features: routeFeatures
+    });
+
+    // Create stop markers
+    const stopFeatures = [];
+    const allStops = [...(routeData.stopsO || []), ...(routeData.stopsI || [])];
+    for (const stopId of allStops) {
+        // Fetch stop details
+        const stopData = await fetchStop(routeData.company, stopId);
+        if (stopData) {
+            stopFeatures.push({
+                type: 'Feature',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [stopData.long, stopData.lat]
+                },
+                properties: {
+                    id: stopId,
+                    name_en: stopData.name_en,
+                    name_tc: stopData.name_tc
+                }
+            });
+        }
+    }
+
+    map.getSource('stops').setData({
+        type: 'FeatureCollection',
+        features: stopFeatures
+    });
+
+    // Update route info panel
+    document.getElementById('route-info').innerHTML = `
+        <p><strong>${routeData.orig_tc} → ${routeData.dest_tc}</strong></p>
+        <p>${routeData.orig_en} → ${routeData.dest_en}</p>
+        <p>公司: ${OPERATOR_INFO[routeData.company]?.name || routeData.company}</p>
+    `;
+
+    // Fit map to route
+    if (routeFeatures.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds();
+        routeFeatures.forEach(feature => {
+            feature.geometry.coordinates.forEach(coord => {
+                bounds.extend(coord);
+            });
+        });
+        map.fitBounds(bounds, { padding: 50 });
+    }
+}
+
 // 平滑動畫引擎
 function animateBuses() {
     let hasMovement = false;
@@ -80,6 +156,10 @@ function animateBuses() {
                 const moveStep = speed * Math.min(distance, 1);
                 bus.lng += (dlng / distance) * moveStep;
                 bus.lat += (dlat / distance) * moveStep;
+                // Update marker position
+                if (busMarkers[bus.id]) {
+                    busMarkers[bus.id].setLngLat([bus.lng, bus.lat]);
+                }
             } else {
                 bus.lng = bus.targetLng;
                 bus.lat = bus.targetLat;
@@ -88,7 +168,6 @@ function animateBuses() {
     });
 
     if (hasMovement) {
-        updateBusSource();
         animationId = requestAnimationFrame(animateBuses);
     } else {
         animationId = null;
@@ -130,6 +209,9 @@ async function updateBusesFromAPI() {
                     targetLng: newBus.lng,
                     targetLat: newBus.lat
                 };
+                const marker = createBusMarker(allBuses[newBus.id]);
+                marker.addTo(map);
+                busMarkers[newBus.id] = marker;
                 console.log(`[App] 新增車輛: ${newBus.id}`);
             }
         });
@@ -138,6 +220,10 @@ async function updateBusesFromAPI() {
         Object.keys(allBuses).forEach(id => {
             if (!freshBusIds.has(id)) {
                 delete allBuses[id];
+                if (busMarkers[id]) {
+                    busMarkers[id].remove();
+                    delete busMarkers[id];
+                }
                 console.log(`[App] 移除車輛: ${id}`);
             }
         });
@@ -190,14 +276,26 @@ function initApp() {
             }
         }, 'road-label');
 
-        // Load 3D bus model
-        map.loadModel('bus-model', 'https://threejs.org/examples/models/gltf/Bus.glb');
+        // Load 3D bus model (using box for testing)
+        map.loadModel('bus-model', 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Box/glTF/Box.gltf');
 
         // Add GeoJSON source for buses
         busSource = new mapboxgl.GeoJSONSource({
             data: { type: 'FeatureCollection', features: [] }
         });
         map.addSource('buses', busSource);
+
+        // Add source for routes
+        map.addSource('routes', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] }
+        });
+
+        // Add source for stops
+        map.addSource('stops', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] }
+        });
 
         // Wait for model to load, then add layer
         setTimeout(() => {
@@ -210,23 +308,36 @@ function initApp() {
                     'model-id': 'bus-model'
                 },
                 paint: {
-                    'model-scale': [0.05, 0.05, 0.05],  // Larger scale
-                    'model-rotation': [0, ['get', 'direction_deg'], 0],
+                    'model-scale': [0.1, 0.1, 0.1],  // Larger scale for testing
+                    'model-rotation': [0, 0, 0],  // No rotation for box
                     'model-opacity': 1.0
                 }
             });
 
-            // Add click event for popups
-            map.on('click', 'bus-models', async (e) => {
-                const properties = e.features[0].properties;
-                const opInfo = OPERATOR_INFO[properties.operator] || { name: properties.operator };
-                
-                // Fetch ETA for the route
-                let etaText = '載入中...';
-                try {
-                    const etaData = await fetchETAForRoute(properties.operator, properties.route);
-                    etaText = etaData ? `下一班: ${etaData}` : '無資料';
-                } catch (error) {
+        // Add route lines
+        map.addLayer({
+            id: 'route-lines',
+            type: 'line',
+            source: 'routes',
+            paint: {
+                'line-color': '#007cbf',
+                'line-width': 3,
+                'line-opacity': 0.8
+            }
+        });
+
+        // Add stop markers
+        map.addLayer({
+            id: 'stop-markers',
+            type: 'circle',
+            source: 'stops',
+            paint: {
+                'circle-radius': 6,
+                'circle-color': '#ffffff',
+                'circle-stroke-color': '#007cbf',
+                'circle-stroke-width': 2
+            }
+        });
                     etaText = '無法獲取';
                 }
 
@@ -254,7 +365,7 @@ function initApp() {
             });
 
             console.log('[App] 3D巴士模型加載完成');
-        }, 2000); // Wait 2 seconds for model to load
+        }, 5000); // Wait 5 seconds for model to load
 
         // 啟動動畫
         animateBuses();
@@ -272,6 +383,28 @@ function initApp() {
                 setTimeout(() => refreshBtn.textContent = '🔄 手動刷新數據', 1000);
             };
         }
+
+        // 綁定路線選擇
+        const routeSelect = document.getElementById('route-select');
+        if (routeSelect) {
+            routeSelect.onchange = async () => {
+                const value = routeSelect.value;
+                if (!value) {
+                    // Clear route
+                    map.getSource('routes').setData({ type: 'FeatureCollection', features: [] });
+                    map.getSource('stops').setData({ type: 'FeatureCollection', features: [] });
+                    document.getElementById('route-info').innerHTML = '';
+                    return;
+                }
+
+                const [company, route] = value.split('-');
+                const routeData = await getRouteData(company, route);
+                if (routeData) {
+                    displayRoute(routeData);
+                }
+            };
+        }
+
         updateStatus('系統運行中');
     });
 

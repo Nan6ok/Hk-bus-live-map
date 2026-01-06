@@ -27,56 +27,93 @@ async function fetchVehiclePositions(company) {
 }
 
 /**
- * Fetch route information
+ * Fetch route path
  * @param {string} company - 'KMB', 'CTB', or 'NLB'
  * @param {string} route - Route number
  * @param {string} bound - 'O' or 'I'
- * @returns {Promise<Object>} Route data
+ * @returns {Promise<Array>} Array of coordinates
  */
-async function fetchRoute(company, route, bound) {
-    const url = `${API_ENDPOINTS[company]}/route/${route}/${bound}`;
+async function fetchRoutePath(company, route, bound) {
+    const url = `${API_ENDPOINTS[company]}/route-path/${route}/${bound}`;
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        return data.data || [];
+    } catch (error) {
+        console.error(`[Data] Failed to fetch ${company} route path ${route}/${bound}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Fetch route stops
+ * @param {string} company - 'KMB', 'CTB', or 'NLB'
+ * @param {string} route - Route number
+ * @param {string} bound - 'O' or 'I'
+ * @returns {Promise<Array>} Array of stop IDs
+ */
+async function fetchRouteStops(company, route, bound) {
+    const routeData = await fetchRoute(company, route, bound);
+    return routeData ? routeData.stops || [] : [];
+}
+
+/**
+ * Fetch stop details
+ * @param {string} company - 'KMB', 'CTB', or 'NLB'
+ * @param {string} stopId - Stop ID
+ * @returns {Promise<Object>} Stop data
+ */
+export async function fetchStop(company, stopId) {
+    const url = `${API_ENDPOINTS[company]}/stop/${stopId}`;
     try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         return data.data;
     } catch (error) {
-        console.error(`[Data] Failed to fetch ${company} route ${route}/${bound}:`, error);
+        console.error(`[Data] Failed to fetch ${company} stop ${stopId}:`, error);
         return null;
     }
 }
 
 /**
- * Fetch ETA for a route at its first stop
+ * Get complete route data including path and stops
  * @param {string} company - Company
  * @param {string} route - Route
- * @returns {Promise<string>} ETA string
+ * @returns {Promise<Object>} Route data with path and stops
  */
-export async function fetchETAForRoute(company, route) {
+export async function getRouteData(company, route) {
     try {
-        // Try both directions
-        const routeO = await fetchRoute(company, route, 'O');
-        const routeI = await fetchRoute(company, route, 'I');
-        
-        const routeData = routeO || routeI;
-        if (!routeData || !routeData.stops || routeData.stops.length === 0) {
-            return null;
-        }
+        const [routeO, routeI] = await Promise.all([
+            fetchRoute(company, route, 'O'),
+            fetchRoute(company, route, 'I')
+        ]);
 
-        // Get ETA for the first stop
-        const firstStop = routeData.stops[0];
-        const etaData = await fetchETA(company, firstStop);
-        
-        if (etaData && etaData.length > 0) {
-            const nextETA = etaData[0];
-            const etaTime = new Date(nextETA.eta);
-            const now = new Date();
-            const diffMinutes = Math.floor((etaTime - now) / 60000);
-            return `${diffMinutes} 分鐘`;
-        }
-        return null;
+        const routeData = routeO || routeI;
+        if (!routeData) return null;
+
+        const [pathO, pathI, stopsO, stopsI] = await Promise.all([
+            fetchRoutePath(company, route, 'O'),
+            fetchRoutePath(company, route, 'I'),
+            fetchRouteStops(company, route, 'O'),
+            fetchRouteStops(company, route, 'I')
+        ]);
+
+        return {
+            route: routeData.route,
+            company,
+            orig_en: routeData.orig_en,
+            dest_en: routeData.dest_en,
+            orig_tc: routeData.orig_tc,
+            dest_tc: routeData.dest_tc,
+            pathO: pathO.map(p => [p.long, p.lat]),
+            pathI: pathI.map(p => [p.long, p.lat]),
+            stopsO,
+            stopsI
+        };
     } catch (error) {
-        console.error(`[Data] Failed to fetch ETA for ${company} ${route}:`, error);
+        console.error(`[Data] Failed to get route data for ${company} ${route}:`, error);
         return null;
     }
 }
