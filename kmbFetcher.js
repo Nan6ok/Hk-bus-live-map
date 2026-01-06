@@ -1,103 +1,89 @@
-// kmbFetcher.js - 三公司模拟数据生成器 (稳定版)
-console.log('[Data] 模拟数据模块已加载');
+// busFetcher.js - Real-time bus data fetcher for Hong Kong bus companies
+console.log('[Data] Real-time bus data module loaded');
 
-const SIMULATION_ROUTES = {
-    'KMB': {
-        color: '#E2231A',
-        routes: {
-            '101': {
-                path: [
-                    [114.225, 22.312], // 观塘
-                    [114.214, 22.320],
-                    [114.200, 22.333],
-                    [114.183, 22.312],
-                    [114.165, 22.332], // 旺角
-                    [114.155, 22.320],
-                    [114.135, 22.286]  // 坚尼地城
-                ]
-            },
-            '1A': {
-                path: [
-                    [114.180, 22.320],
-                    [114.185, 22.315],
-                    [114.190, 22.310]
-                ]
-            }
-        }
-    },
-    'CTB': {
-        color: '#FFD100',
-        routes: {
-            '962': {
-                path: [
-                    [114.165, 22.332], // 起点
-                    [114.175, 22.325],
-                    [114.183, 22.312],
-                    [114.190, 22.303],
-                    [114.195, 22.295]  // 终点
-                ]
-            }
-        }
-    },
-    'NLB': {
-        color: '#6DCFF6',
-        routes: {
-            '1': {
-                path: [
-                    [113.945, 22.267], // 东涌附近
-                    [113.935, 22.275],
-                    [113.925, 22.280]
-                ]
-            }
-        }
-    }
+// API endpoints
+const API_ENDPOINTS = {
+    'KMB': 'https://data.etabus.gov.hk/v1/transport/kmb',
+    'CTB': 'https://rt.data.gov.hk/v1/transport/citybus-nwfb',
+    'NLB': 'https://rt.data.gov.hk/v1/transport/nlb'
 };
 
 /**
- * 生成所有模拟巴士数据 (主函数)
- * @returns {Promise<Array>} 巴士对象数组
+ * Fetch vehicle positions for a company
+ * @param {string} company - 'KMB', 'CTB', or 'NLB'
+ * @returns {Promise<Array>} Array of bus objects
+ */
+async function fetchVehiclePositions(company) {
+    const url = `${API_ENDPOINTS[company]}/vehicle-position/`;
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        return data.data || [];
+    } catch (error) {
+        console.error(`[Data] Failed to fetch ${company} vehicle positions:`, error);
+        return [];
+    }
+}
+
+/**
+ * Fetch ETA for a specific stop
+ * @param {string} company - 'KMB', 'CTB', or 'NLB'
+ * @param {string} stopId - Stop ID
+ * @returns {Promise<Array>} Array of ETA objects
+ */
+async function fetchETA(company, stopId) {
+    const url = `${API_ENDPOINTS[company]}/eta/${stopId}`;
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        return data.data || [];
+    } catch (error) {
+        console.error(`[Data] Failed to fetch ${company} ETA for ${stopId}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Normalize bus data from different APIs to a common format
+ * @param {Array} vehicles - Raw vehicle data
+ * @param {string} company - Company name
+ * @returns {Array} Normalized bus objects
+ */
+function normalizeBusData(vehicles, company) {
+    return vehicles.map(vehicle => ({
+        id: `${company}_${vehicle.vehicle_id || vehicle.bus || vehicle.id}`,
+        lng: parseFloat(vehicle.long || vehicle.longitude),
+        lat: parseFloat(vehicle.lat || vehicle.latitude),
+        route: vehicle.route,
+        operator: company,
+        direction: vehicle.bound === 'O' ? 'Outbound' : 'Inbound',
+        direction_deg: vehicle.direction || 0,
+        speed: vehicle.speed || 0,
+        service_type: vehicle.service_type || '1'
+    })).filter(bus => !isNaN(bus.lng) && !isNaN(bus.lat));
+}
+
+/**
+ * Generate all real-time bus data from all companies
+ * @returns {Promise<Array>} Array of bus objects
  */
 export async function getAllSimulatedBuses() {
     const allBuses = [];
-    const now = Date.now();
+    const companies = ['KMB', 'CTB', 'NLB'];
 
-    for (const [company, companyInfo] of Object.entries(SIMULATION_ROUTES)) {
-        for (const [routeNum, routeInfo] of Object.entries(companyInfo.routes)) {
-            const path = routeInfo.path;
-            // 每条路线生成2辆巴士
-            for (let i = 1; i <= 2; i++) {
-                // 每辆车有独立、稳定的进度
-                const busSeed = (i * 100) + routeNum.charCodeAt(0);
-                const totalDuration = 400000; // 每辆车完整跑一圈的时间 (毫秒)
-                const baseProgress = ((now % totalDuration) + busSeed) / totalDuration;
-                
-                const pointIndex = Math.floor(baseProgress * (path.length - 1));
-                const nextIndex = Math.min(pointIndex + 1, path.length - 1);
-                const segmentProgress = (baseProgress * (path.length - 1)) % 1;
-
-                const [lng1, lat1] = path[pointIndex];
-                const [lng2, lat2] = path[nextIndex];
-
-                // 使用固定ID，避免车辆无故消失
-                const busId = `${company}_${routeNum}_V${i}`;
-
-                allBuses.push({
-                    id: busId, // 固定ID是关键
-                    lng: lng1 + (lng2 - lng1) * segmentProgress,
-                    lat: lat1 + (lat2 - lat1) * segmentProgress,
-                    route: routeNum,
-                    operator: company,
-                    direction: pointIndex % 2 === 0 ? '往终点' : '往起点',
-                    color: companyInfo.color
-                });
-            }
-        }
+    for (const company of companies) {
+        const vehicles = await fetchVehiclePositions(company);
+        const normalized = normalizeBusData(vehicles, company);
+        allBuses.push(...normalized);
     }
-    console.log(`[Data] 生成 ${allBuses.length} 辆模拟巴士`);
+
+    console.log(`[Data] Fetched ${allBuses.length} real-time buses`);
     return allBuses;
 }
 
-// 兼容旧版调用 (如果app.js还在用)
+// Keep compatibility
 export async function getKmbBusesOnRoute(route) {
     const allBuses = await getAllSimulatedBuses();
     return allBuses.filter(bus => bus.operator === 'KMB' && (!route || bus.route === route));
