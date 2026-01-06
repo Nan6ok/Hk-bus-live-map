@@ -108,7 +108,13 @@ async function updateBusesFromAPI() {
     try {
         console.log('[系統] 正在更新巴士數據...');
         // 調用 kmbFetcher.js 中的函數獲取數據
-        const realBuses = await getKmbBusesOnRoute('101'); // 固定獲取101路線
+      // 同時獲取KMB和CTB的數據，使用 Promise.all 並行請求
+const [kmbBuses, ctbBuses] = await Promise.all([
+    getKmbBusesOnRoute('101'),
+    getCtbBusesOnRoute('962')
+]);
+// 合併兩個數組
+const realBuses = [...kmbBuses, ...ctbBuses];
         
         realBuses.forEach(realBus => {
             if (allBuses[realBus.id]) {
