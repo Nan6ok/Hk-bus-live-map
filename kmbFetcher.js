@@ -70,3 +70,49 @@ export async function getKmbBusesOnRoute(route = '101') {
 
 // 備用：如果未來想連接真實API，可在此添加函數
 // export async function fetchRealKmbEta(route, stopId) { ... }
+/**
+ * 模拟获取城巴 (CTB) 路線數據（測試用）
+ * 以城巴 962 路線（屯門 <-> 銅鑼灣）為例，使用模擬坐標
+ */
+export async function getCtbBusesOnRoute(route = '962') {
+    console.log(`[CTB] 模擬獲取城巴路線 ${route} 的數據`);
+    // 定義 962 路線的模擬關鍵坐標點（屯門 -> 港島）
+    const ctbRoutePath = [
+        [113.97, 22.39],  // 屯門市中心附近
+        [114.00, 22.37],
+        [114.04, 22.33],  // 荃灣附近
+        [114.07, 22.32],
+        [114.12, 22.29],  // 青嶼幹線附近
+        [114.16, 22.29],
+        [114.17, 22.28],  // 西區海底隧道港島入口
+        [114.18, 22.28],  // 西營盤附近
+        [114.19, 22.28],  // 上環附近
+        [114.20, 22.28]   // 銅鑼灣附近
+    ];
+    const now = Date.now();
+    const simulatedBuses = [];
+    // 模擬2輛城巴巴士
+    for (let i = 1; i <= 2; i++) {
+        const baseProgress = (now / 60000 + i * 300) % 50000 / 50000;
+        const pointIndex = Math.floor(baseProgress * (ctbRoutePath.length - 1));
+        const nextPointIndex = Math.min(pointIndex + 1, ctbRoutePath.length - 1);
+        const currentPoint = ctbRoutePath[pointIndex];
+        const nextPoint = ctbRoutePath[nextPointIndex];
+        const segmentProgress = (baseProgress * (ctbRoutePath.length - 1)) % 1;
+        const lng = currentPoint[0] + (nextPoint[0] - currentPoint[0]) * segmentProgress;
+        const lat = currentPoint[1] + (nextPoint[1] - currentPoint[1]) * segmentProgress;
+        const busId = `CTB_${route}_SIM${i}`;
+        // 根據進度判斷方向
+        const direction = baseProgress > 0.5 ? '往銅鑼灣' : '往屯門';
+        simulatedBuses.push({
+            id: busId,
+            lng: lng,
+            lat: lat,
+            route: route,
+            operator: 'CTB', // 營運商標記為 CTB
+            direction: direction
+        });
+    }
+    console.log(`[CTB] 返回 ${simulatedBuses.length} 輛模擬巴士`);
+    return simulatedBuses;
+}
