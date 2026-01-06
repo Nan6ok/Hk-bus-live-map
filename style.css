@@ -1,17 +1,24 @@
-/* 巴士彈出信息框樣式 */
 .mapboxgl-popup-content {
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 15px;
-    box-shadow: 0 3px 15px rgba(0,0,0,0.2);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    max-width: 250px;
 }
 .bus-popup h3 {
     margin: 0 0 8px 0;
-    color: #333;
+    color: #222;
+    padding-bottom: 6px;
     border-bottom: 1px solid #eee;
-    padding-bottom: 5px;
 }
 .bus-popup p {
     margin: 5px 0;
     font-size: 0.9em;
     color: #555;
+}
+.bus-popup .bus-id {
+    font-family: monospace;
+    background: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.85em;
 }
