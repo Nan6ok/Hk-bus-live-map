@@ -18,22 +18,26 @@
             max-width: 320px; z-index: 1000;
             font-size: 14px;
         }
-        #control-panel {
-            position: absolute; top: 10px; right: 10px;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 15px; border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            max-width: 300px; z-index: 1000;
-            font-size: 14px;
+        #info-panel h3 { margin: 0 0 10px 0; color: #333; }
+        .legend { margin: 10px 0; padding-top: 10px; border-top: 1px solid #eee; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .legend-color {
+            width: 16px; height: 16px; border-radius: 50%;
+            margin-right: 8px; border: 2px solid #fff;
         }
-        #control-panel h4 { margin: 0 0 10px 0; color: #333; }
-        #route-select { width: 100%; padding: 5px; margin-bottom: 10px; }
-        #route-info { font-size: 0.9em; color: #555; }
+        .update-info { font-size: 0.85em; color: #666; margin-top: 10px; }
+        #refresh-btn {
+            background: #4CAF50; color: white; border: none;
+            padding: 8px 15px; border-radius: 5px; margin-top: 10px;
+            cursor: pointer; font-weight: bold;
+        }
+        #refresh-btn:hover { background: #45a049; }
+        .debug { font-size: 0.75em; color: #888; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div id="info-panel">
-        <h3>🚍 香港巴士實時地圖 (Mini Tokyo 3D 風格)</h3>
+        <h3>🚍 香港巴士實時地圖 (模擬測試版)</h3>
         <p>當前顯示: <strong><span id="bus-count">0</span> 輛巴士</strong></p>
         <div class="legend">
             <div class="legend-item"><div class="legend-color" style="background: #E2231A;"></div> 九巴 (KMB) - 101, 1A</div>
@@ -44,17 +48,8 @@
         <button id="refresh-btn">🔄 手動刷新數據</button>
         <p class="debug">狀態: <span id="status">正在加載...</span></p>
     </div>
-    <div id="control-panel">
-        <h4>路線資訊</h4>
-        <select id="route-select">
-            <option value="">選擇路線</option>
-            <option value="KMB-101">KMB 101</option>
-            <option value="CTB-962">CTB 962</option>
-            <option value="NLB-1">NLB 1</option>
-        </select>
-        <div id="route-info"></div>
-    </div>
     <div id="map"></div>
+    <!-- 只保留必要的核心脚本 -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
