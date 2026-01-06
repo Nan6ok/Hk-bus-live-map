@@ -12,7 +12,7 @@ import { getAllSimulatedBuses } from './kmbFetcher.js';
 // 2. 全局状态
 let map = null;
 let allBuses = {};      // 主车辆库: { 车辆ID: 车辆数据 }
-let busSource = null;   // GeoJSON source for buses
+let busMarkers = {};    // 地图标记: { 车辆ID: marker对象 }
 let isUpdating = false;
 let updateInterval = null;
 
@@ -39,29 +39,32 @@ function updateInfoPanel(count) {
     }
 }
 
-function updateBusSource() {
-    const features = Object.values(allBuses).map(bus => ({
-        type: 'Feature',
-        geometry: {
-            type: 'Point',
-            coordinates: [bus.lng, bus.lat]
-        },
-        properties: {
-            id: bus.id,
-            route: bus.route,
-            operator: bus.operator,
-            direction: bus.direction,
-            direction_deg: bus.direction_deg,
-            speed: bus.speed
-        }
-    }));
-    const geojson = {
-        type: 'FeatureCollection',
-        features: features
-    };
-    if (busSource) {
-        busSource.setData(geojson);
-    }
+function createBusMarker(bus) {
+    const el = document.createElement('div');
+    const opInfo = OPERATOR_INFO[bus.operator] || { color: '#888', name: bus.operator };
+    
+    el.className = 'bus-marker';
+    el.style.cssText = `
+        width: 20px; height: 20px; border-radius: 50%;
+        background-color: ${opInfo.color};
+        border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        cursor: pointer; transition: transform 0.2s;
+    `;
+    el.title = `${opInfo.name} ${bus.route} | ${bus.direction}`;
+
+    const marker = new mapboxgl.Marker(el)
+        .setLngLat([bus.lng, bus.lat])
+        .setPopup(new mapboxgl.Popup({ offset: 25 })
+            .setHTML(`
+                <div class="bus-popup">
+                    <h3>${opInfo.name} ${bus.route} 線</h3>
+                    <p><strong>方向:</strong> ${bus.direction}</p>
+                    <p><strong>公司:</strong> ${bus.operator}</p>
+                    <p><strong>狀態:</strong> 行駛中</p>
+                    <p class="bus-id">ID: ${bus.id}</p>
+                </div>
+            `));
+    return marker;
 }
 
 // 6. 数据更新函数 (防止车辆消失的关键逻辑)
@@ -75,7 +78,8 @@ async function updateBusesFromAPI() {
 
     try {
         const freshBuses = await getAllSimulatedBuses();
-        console.log(`[App] 獲取到 ${freshBuses.length} 輛巴士數據`);
+        console.log(`[App] 收到 ${freshBuses.length} 輛新巴士數據`);
+        console.log('[App] 樣本巴士:', freshBuses.slice(0, 3));
 
         // 記錄新數據中出現的ID
         const freshBusIds = new Set();
@@ -86,9 +90,16 @@ async function updateBusesFromAPI() {
             if (allBuses[newBus.id]) {
                 // 已有車輛：更新位置
                 allBuses[newBus.id] = { ...allBuses[newBus.id], ...newBus };
+                // 更新 marker 位置
+                if (busMarkers[newBus.id]) {
+                    busMarkers[newBus.id].setLngLat([newBus.lng, newBus.lat]);
+                }
             } else {
                 // 新車輛：添加到系統
                 allBuses[newBus.id] = newBus;
+                const marker = createBusMarker(allBuses[newBus.id]);
+                marker.addTo(map);
+                busMarkers[newBus.id] = marker;
                 console.log(`[App] 新增車輛: ${newBus.id}`);
             }
         });
@@ -97,12 +108,13 @@ async function updateBusesFromAPI() {
         Object.keys(allBuses).forEach(id => {
             if (!freshBusIds.has(id)) {
                 delete allBuses[id];
+                if (busMarkers[id]) {
+                    busMarkers[id].remove();
+                    delete busMarkers[id];
+                }
                 console.log(`[App] 移除車輛: ${id}`);
             }
         });
-
-        // 更新地圖源
-        updateBusSource();
 
         updateInfoPanel(Object.keys(allBuses).length);
         updateStatus('數據更新完成');
@@ -131,7 +143,7 @@ function initApp() {
 
     map.on('load', () => {
         console.log('[App] 地圖加載完成');
-        updateStatus('地圖加載完成，啟動3D巴士...');
+        updateStatus('地圖加載完成，啟動巴士更新...');
 
         // 添加3D建筑
         map.addLayer({
@@ -149,57 +161,7 @@ function initApp() {
             }
         }, 'road-label');
 
-        // Load 3D bus model
-        map.loadModel('bus-model', 'https://threejs.org/examples/models/gltf/Bus.glb');
-
-        // Add GeoJSON source for buses
-        busSource = new mapboxgl.GeoJSONSource({
-            data: { type: 'FeatureCollection', features: [] }
-        });
-        map.addSource('buses', busSource);
-
-        // Add 3D model layer
-        map.addLayer({
-            id: 'bus-models',
-            type: 'model',
-            source: 'buses',
-            layout: {
-                'model-id': 'bus-model'
-            },
-            paint: {
-                'model-scale': [0.005, 0.005, 0.005],  // Adjust scale for visibility
-                'model-rotation': [0, ['get', 'direction_deg'], 0],
-                'model-opacity': 1.0
-            }
-        });
-
-        // Add click event for popups
-        map.on('click', 'bus-models', (e) => {
-            const properties = e.features[0].properties;
-            const opInfo = OPERATOR_INFO[properties.operator] || { name: properties.operator };
-            new mapboxgl.Popup()
-                .setLngLat(e.lngLat)
-                .setHTML(`
-                    <div class="bus-popup">
-                        <h3>${opInfo.name} ${properties.route} 線</h3>
-                        <p><strong>方向:</strong> ${properties.direction}</p>
-                        <p><strong>公司:</strong> ${properties.operator}</p>
-                        <p><strong>狀態:</strong> 行駛中</p>
-                        <p class="bus-id">ID: ${properties.id}</p>
-                    </div>
-                `)
-                .addTo(map);
-        });
-
-        // Change cursor on hover
-        map.on('mouseenter', 'bus-models', () => {
-            map.getCanvas().style.cursor = 'pointer';
-        });
-        map.on('mouseleave', 'bus-models', () => {
-            map.getCanvas().style.cursor = '';
-        });
-
-        console.log('[App] 3D巴士模型加載完成');
+        console.log('[App] 3D建築加載完成');
 
         // 立即更新數據，然后每15秒更新一次
         updateBusesFromAPI();

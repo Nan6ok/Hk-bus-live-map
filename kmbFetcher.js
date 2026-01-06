@@ -74,12 +74,16 @@ export async function getAllSimulatedBuses() {
     const companies = ['KMB', 'CTB', 'NLB'];
 
     for (const company of companies) {
+        console.log(`[Data] Fetching ${company} data...`);
         const vehicles = await fetchVehiclePositions(company);
+        console.log(`[Data] ${company} raw vehicles:`, vehicles.length);
         const normalized = normalizeBusData(vehicles, company);
+        console.log(`[Data] ${company} normalized buses:`, normalized.length);
         allBuses.push(...normalized);
     }
 
-    console.log(`[Data] Fetched ${allBuses.length} real-time buses`);
+    console.log(`[Data] Total fetched ${allBuses.length} real-time buses`);
+    console.log('[Data] Sample bus:', allBuses[0]);
     return allBuses;
 }
 
