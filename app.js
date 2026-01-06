@@ -7,7 +7,7 @@ const MAPBOX_TOKEN = 'pk.eyJ1IjoibmFuNm9rIiwiYSI6ImNtazB2bTYxMTdhNnkzZHB1cXN4bTR
 
 // 1. 设置Token并导入模块
 mapboxgl.accessToken = MAPBOX_TOKEN;
-import { getAllSimulatedBuses } from './kmbFetcher.js';
+import { getAllSimulatedBuses, fetchETAForRoute } from './kmbFetcher.js';
 
 // 2. 全局状态
 let map = null;
@@ -199,48 +199,62 @@ function initApp() {
         });
         map.addSource('buses', busSource);
 
-        // Add 3D model layer
-        map.addLayer({
-            id: 'bus-models',
-            type: 'model',
-            source: 'buses',
-            layout: {
-                'model-id': 'bus-model'
-            },
-            paint: {
-                'model-scale': [0.02, 0.02, 0.02],  // Increased scale for visibility
-                'model-rotation': [0, ['get', 'direction_deg'], 0],
-                'model-opacity': 1.0
-            }
-        });
+        // Wait for model to load, then add layer
+        setTimeout(() => {
+            // Add 3D model layer
+            map.addLayer({
+                id: 'bus-models',
+                type: 'model',
+                source: 'buses',
+                layout: {
+                    'model-id': 'bus-model'
+                },
+                paint: {
+                    'model-scale': [0.05, 0.05, 0.05],  // Larger scale
+                    'model-rotation': [0, ['get', 'direction_deg'], 0],
+                    'model-opacity': 1.0
+                }
+            });
 
-        // Add click event for popups
-        map.on('click', 'bus-models', (e) => {
-            const properties = e.features[0].properties;
-            const opInfo = OPERATOR_INFO[properties.operator] || { name: properties.operator };
-            new mapboxgl.Popup()
-                .setLngLat(e.lngLat)
-                .setHTML(`
-                    <div class="bus-popup">
-                        <h3>${opInfo.name} ${properties.route} 線</h3>
-                        <p><strong>方向:</strong> ${properties.direction}</p>
-                        <p><strong>公司:</strong> ${properties.operator}</p>
-                        <p><strong>狀態:</strong> 行駛中</p>
-                        <p class="bus-id">ID: ${properties.id}</p>
-                    </div>
-                `)
-                .addTo(map);
-        });
+            // Add click event for popups
+            map.on('click', 'bus-models', async (e) => {
+                const properties = e.features[0].properties;
+                const opInfo = OPERATOR_INFO[properties.operator] || { name: properties.operator };
+                
+                // Fetch ETA for the route
+                let etaText = '載入中...';
+                try {
+                    const etaData = await fetchETAForRoute(properties.operator, properties.route);
+                    etaText = etaData ? `下一班: ${etaData}` : '無資料';
+                } catch (error) {
+                    etaText = '無法獲取';
+                }
 
-        // Change cursor on hover
-        map.on('mouseenter', 'bus-models', () => {
-            map.getCanvas().style.cursor = 'pointer';
-        });
-        map.on('mouseleave', 'bus-models', () => {
-            map.getCanvas().style.cursor = '';
-        });
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <div class="bus-popup">
+                            <h3>${opInfo.name} ${properties.route} 線</h3>
+                            <p><strong>方向:</strong> ${properties.direction}</p>
+                            <p><strong>公司:</strong> ${properties.operator}</p>
+                            <p><strong>狀態:</strong> 行駛中</p>
+                            <p><strong>ETA:</strong> ${etaText}</p>
+                            <p class="bus-id">ID: ${properties.id}</p>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
 
-        console.log('[App] 3D巴士模型加載完成');
+            // Change cursor on hover
+            map.on('mouseenter', 'bus-models', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'bus-models', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            console.log('[App] 3D巴士模型加載完成');
+        }, 2000); // Wait 2 seconds for model to load
 
         // 啟動動畫
         animateBuses();

@@ -27,21 +27,57 @@ async function fetchVehiclePositions(company) {
 }
 
 /**
- * Fetch ETA for a specific stop
+ * Fetch route information
  * @param {string} company - 'KMB', 'CTB', or 'NLB'
- * @param {string} stopId - Stop ID
- * @returns {Promise<Array>} Array of ETA objects
+ * @param {string} route - Route number
+ * @param {string} bound - 'O' or 'I'
+ * @returns {Promise<Object>} Route data
  */
-async function fetchETA(company, stopId) {
-    const url = `${API_ENDPOINTS[company]}/eta/${stopId}`;
+async function fetchRoute(company, route, bound) {
+    const url = `${API_ENDPOINTS[company]}/route/${route}/${bound}`;
     try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        return data.data || [];
+        return data.data;
     } catch (error) {
-        console.error(`[Data] Failed to fetch ${company} ETA for ${stopId}:`, error);
-        return [];
+        console.error(`[Data] Failed to fetch ${company} route ${route}/${bound}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Fetch ETA for a route at its first stop
+ * @param {string} company - Company
+ * @param {string} route - Route
+ * @returns {Promise<string>} ETA string
+ */
+export async function fetchETAForRoute(company, route) {
+    try {
+        // Try both directions
+        const routeO = await fetchRoute(company, route, 'O');
+        const routeI = await fetchRoute(company, route, 'I');
+        
+        const routeData = routeO || routeI;
+        if (!routeData || !routeData.stops || routeData.stops.length === 0) {
+            return null;
+        }
+
+        // Get ETA for the first stop
+        const firstStop = routeData.stops[0];
+        const etaData = await fetchETA(company, firstStop);
+        
+        if (etaData && etaData.length > 0) {
+            const nextETA = etaData[0];
+            const etaTime = new Date(nextETA.eta);
+            const now = new Date();
+            const diffMinutes = Math.floor((etaTime - now) / 60000);
+            return `${diffMinutes} 分鐘`;
+        }
+        return null;
+    } catch (error) {
+        console.error(`[Data] Failed to fetch ETA for ${company} ${route}:`, error);
+        return null;
     }
 }
 
